@@ -6,8 +6,9 @@ import SwiftUI
 
 /// 挂在主窗口根部的 Toast 渲染覆盖层。
 ///
-/// 订阅共享的 `ToastCenter`（即 `ToastProviding` 实现），在窗口顶部
-/// 渲染当前 toast；持久化错误则以居中面板呈现。
+/// 订阅共享的 `ToastCenter`（即 `ToastProviding` 实现），macOS 在窗口顶部
+/// 渲染当前 toast；iOS 横幅改在底部出现（顶部是导航栏与主要操作区，横幅
+/// 会遮挡工具栏按钮）。持久化错误则以居中面板呈现。
 /// Toast 本身不参与交互（`allowsHitTesting(false)`），不遮挡下方内容。
 /// 具体视觉由 LumiUI 组件承担（见 `ToastBannerView` / `ErrorNoticeOverlay`）。
 public struct ToastOverlay<Content: View>: View {
@@ -40,39 +41,63 @@ public struct ToastOverlay<Content: View>: View {
 
     public var body: some View {
         content
+            #if os(macOS)
             .overlay(alignment: .top) {
-                Group {
-                    if let toast = center.currentToast {
-                        ToastBannerView(toast: toast)
-                            .appStatusPresentationTransition(preference: motionPreference)
-                    } else if let loading = center.currentLoading {
-                        AppStatusBanner(
-                            kind: .loading,
-                            title: loading.title,
-                            message: loading.detail
-                        )
-                        .frame(maxWidth: 380, alignment: .leading)
-                        .appShadow(.xl)
-                        .padding(.horizontal, DesignTokens.Spacing.md)
-                        .padding(.top, DesignTokens.Spacing.sm)
-                        .appStatusPresentationTransition(preference: motionPreference)
-                    }
-                }
-                .animation(
-                    LumiMotion.enabled(LumiMotion.statusPresentation, preference: motionPreference),
-                    value: center.currentToast
-                )
-                .animation(
-                    LumiMotion.enabled(LumiMotion.statusPresentation, preference: motionPreference),
-                    value: center.currentLoading
-                )
-                .allowsHitTesting(false)
+                toastBanner
             }
+            #else
+            .overlay(alignment: .bottom) {
+                toastBanner
+            }
+            #endif
             .overlay {
                 if let error = center.currentError, shouldDisplayError(error) {
                     ErrorNoticeOverlay(error: error, center: center)
                 }
             }
+    }
+
+    @ViewBuilder
+    private var toastBanner: some View {
+        Group {
+            if let toast = center.currentToast {
+                ToastBannerView(toast: toast)
+                    .appStatusPresentationTransition(preference: motionPreference)
+            } else if let loading = center.currentLoading {
+                AppStatusBanner(
+                    kind: .loading,
+                    title: loading.title,
+                    message: loading.detail
+                )
+                .frame(maxWidth: 380, alignment: .leading)
+                .appShadow(.xl)
+                .padding(.horizontal, DesignTokens.Spacing.md)
+                .modifier(ToastEdgePadding())
+                .appStatusPresentationTransition(preference: motionPreference)
+            }
+        }
+        .animation(
+            LumiMotion.enabled(LumiMotion.statusPresentation, preference: motionPreference),
+            value: center.currentToast
+        )
+        .animation(
+            LumiMotion.enabled(LumiMotion.statusPresentation, preference: motionPreference),
+            value: center.currentLoading
+        )
+        .allowsHitTesting(false)
+    }
+}
+
+/// 横幅贴边方向的留白：macOS 在顶部（横幅下方留白），iOS 在底部（横幅上方留白）。
+private struct ToastEdgePadding: ViewModifier {
+    func body(content: Content) -> some View {
+        #if os(macOS)
+        content
+            .padding(.top, DesignTokens.Spacing.sm)
+        #else
+        content
+            .padding(.bottom, DesignTokens.Spacing.sm)
+        #endif
     }
 }
 
